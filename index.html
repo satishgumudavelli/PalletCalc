@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<!--
+    Manual pallet-fill calculator for PRIM-5724 (Overlength-First Mixed Pallet Fill).
+    Pure HTML/JS port of Commercepundit\Customshipping\Helper\Data::buildOverlengthFirstPalletLines()
+    / buildLtlPalletItems() — no Magento bootstrap, open directly in a browser.
+-->
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>PRIM-5724 Pallet Fill Calculator</title>
+    <style>
+        body { font-family: sans-serif; max-width: 900px; margin: 2em auto; }
+        fieldset { margin-top: 1em; }
+        label { display: block; margin-top: 0.6em; }
+        input[type=number] { width: 120px; }
+        table { border-collapse: collapse; margin-top: 0.5em; }
+        th, td { border: 1px solid #ccc; padding: 4px 10px; text-align: right; }
+        th:first-child, td:first-child { text-align: left; }
+        button { margin-top: 1em; padding: 0.5em 1.5em; }
+        .hint { color: #666; font-size: 0.85em; }
+    </style>
+</head>
+<body>
+<h1>PRIM-5724 Pallet Fill Calculator</h1>
+<p class="hint">Runs entirely in your browser; edit store config values if they change.</p>
+
+<form id="calc-form" onsubmit="calculate(); return false;">
+    <label>Overlength weight
+        <input type="number" step="0.01" id="ov_weight" value="600">
+    </label>
+    <label>
+        <input type="checkbox" id="ov_assembled">
+        Overlength is Assembled (unchecked = RTA)
+    </label>
+    <label>Non-Overlength weight
+        <input type="number" step="0.01" id="nol_weight" value="800">
+    </label>
+    <label>
+        <input type="checkbox" id="nol_assembled" checked>
+        Non-Overlength is Assembled (unchecked = RTA)
+    </label>
+
+    <fieldset>
+        <legend>Store config</legend>
+        <label>Overlength RTA Max <input type="number" id="ov_rta_max" value="800"></label>
+        <label>Overlength RTA Tare <input type="number" id="ov_rta_tare" value="79"></label>
+        <label>Overlength Assembled Max <input type="number" id="ov_assembled_max" value="400"></label>
+        <label>Overlength Assembled Tare <input type="number" id="ov_assembled_tare" value="79"></label>
+        <label>Non-Overlength RTA Max <input type="number" id="nol_rta_max" value="900"></label>
+        <label>Non-Overlength RTA Tare <input type="number" id="nol_rta_tare" value="34"></label>
+        <label>Non-Overlength Assembled Max <input type="number" id="nol_assembled_max" value="400"></label>
+        <label>Non-Overlength Assembled Tare <input type="number" id="nol_assembled_tare" value="45"></label>
+    </fieldset>
+
+    <button type="submit">Calculate</button>
+</form>
+
+<div id="output"></div>
+
+<script>
+/**
+ * Port of Commercepundit\Customshipping\Helper\Data::buildOverlengthFirstPalletLines().
+ * Fills Overlength-capacity pallets first (pure Overlength slots at its own cap, then one
+ * final partial slot), then builds standalone Non-Overlength pallets from whatever
+ * Non-Overlength weight remains. The final Overlength slot is topped off with Non-Overlength
+ * weight up to the Overlength group's own cap — unless Overlength is RTA and Non-Overlength is
+ * Assembled, in which case top-off is capped by the Non-Overlength group's own Assembled max
+ * total weight instead (not the larger RTA cap): if the Overlength portion plus its own tare
+ * already reaches that limit, no top-off happens at all.
+ */
+function buildOverlengthFirstPalletLines(overlengthWeight, nonOverlengthWeight, isOverlengthAssembled, isNonOverlengthAssembled, cfg) {
+    const overlengthMax = isOverlengthAssembled ? cfg.ovAssembledMax : cfg.ovRtaMax;
+    const overlengthTare = isOverlengthAssembled ? cfg.ovAssembledTare : cfg.ovRtaTare;
+    let overlengthCargoCap = overlengthMax - overlengthTare;
+    if (overlengthCargoCap <= 0) overlengthCargoCap = overlengthMax;
+
+    const nonOverlengthMax = isNonOverlengthAssembled ? cfg.nolAssembledMax : cfg.nolRtaMax;
+    const nonOverlengthTare = isNonOverlengthAssembled ? cfg.nolAssembledTare : cfg.nolRtaTare;
+    let nonOverlengthCargoCap = nonOverlengthMax - nonOverlengthTare;
+    if (nonOverlengthCargoCap <= 0) nonOverlengthCargoCap = nonOverlengthMax;
+
+    const isAssembledMixRestricted = !isOverlengthAssembled && isNonOverlengthAssembled;
+
+    const overlengthLines = [];
+    let nonOverlengthRemaining = nonOverlengthWeight;
+    if (overlengthWeight > 0 && overlengthMax > 0) {
+        let overlengthRemaining = overlengthWeight;
+
+        while (overlengthRemaining >= overlengthCargoCap) {
+            overlengthLines.push({
+                weight: Math.round(overlengthCargoCap + overlengthTare),
+                detail: `${overlengthCargoCap} OV + ${overlengthTare} tare (pure)`,
+            });
+            overlengthRemaining -= overlengthCargoCap;
+        }
+
+        if (overlengthRemaining > 0) {
+            let topOff = 0;
+            if (nonOverlengthRemaining > 0) {
+                if (isAssembledMixRestricted) {
+                    const room = nonOverlengthMax - (overlengthRemaining + overlengthTare);
+                    if (room > 0) topOff = Math.min(room, nonOverlengthRemaining);
+                } else if (overlengthRemaining < overlengthCargoCap) {
+                    topOff = Math.min(overlengthCargoCap - overlengthRemaining, nonOverlengthRemaining);
+                }
+            }
+            nonOverlengthRemaining -= topOff;
+            const detail = topOff > 0
+                ? `${overlengthRemaining} OV + ${topOff} NOL + ${overlengthTare} tare`
+                : `${overlengthRemaining} OV + ${overlengthTare} tare (no top-off)`;
+            overlengthLines.push({ weight: Math.round(overlengthRemaining + topOff + overlengthTare), detail });
+        }
+    }
+
+    const nonOverlengthLines = [];
+    while (nonOverlengthRemaining > 0) {
+        const portion = Math.min(nonOverlengthRemaining, nonOverlengthCargoCap);
+        nonOverlengthRemaining -= portion;
+        nonOverlengthLines.push({
+            weight: Math.round(portion + nonOverlengthTare),
+            detail: `${portion} NOL + ${nonOverlengthTare} tare`,
+        });
+    }
+
+    return { overlength: overlengthLines, non_overlength: nonOverlengthLines };
+}
+
+function renderPalletTable(title, lines) {
+    if (!lines.length) {
+        return `<p><em>${title}: none</em></p>`;
+    }
+    const totalWeight = lines.reduce((sum, l) => sum + l.weight, 0);
+    const rows = lines.map((l, i) => `<tr><td>${i + 1}</td><td>${l.weight}</td><td>${l.detail}</td></tr>`).join('');
+    return `<h3>${title} (${lines.length} pallet(s), ${totalWeight} lbs total)</h3>`
+        + '<table><thead><tr><th>#</th><th>Weight</th><th>Breakdown</th></tr></thead>'
+        + `<tbody>${rows}</tbody></table>`;
+}
+
+function calculate() {
+    const num = (id) => parseFloat(document.getElementById(id).value) || 0;
+    const bool = (id) => document.getElementById(id).checked;
+
+    const cfg = {
+        ovRtaMax: num('ov_rta_max'),
+        ovRtaTare: num('ov_rta_tare'),
+        ovAssembledMax: num('ov_assembled_max'),
+        ovAssembledTare: num('ov_assembled_tare'),
+        nolRtaMax: num('nol_rta_max'),
+        nolRtaTare: num('nol_rta_tare'),
+        nolAssembledMax: num('nol_assembled_max'),
+        nolAssembledTare: num('nol_assembled_tare'),
+    };
+
+    const overlengthWeight = num('ov_weight');
+    const nonOverlengthWeight = num('nol_weight');
+    const isOverlengthAssembled = bool('ov_assembled');
+    const isNonOverlengthAssembled = bool('nol_assembled');
+
+    const lines = buildOverlengthFirstPalletLines(
+        overlengthWeight,
+        nonOverlengthWeight,
+        isOverlengthAssembled,
+        isNonOverlengthAssembled,
+        cfg
+    );
+    const flat = lines.overlength.concat(lines.non_overlength);
+
+    document.getElementById('output').innerHTML =
+        renderPalletTable('Overlength-capacity pallets', lines.overlength)
+        + renderPalletTable('Standalone Non-Overlength pallets', lines.non_overlength)
+        + renderPalletTable('Flat merged (what persists to quote.ltl_pallet_items)', flat);
+}
+
+calculate();
+</script>
+</body>
+</html>
