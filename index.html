@@ -64,9 +64,10 @@
  * final partial slot), then builds standalone Non-Overlength pallets from whatever
  * Non-Overlength weight remains. The final Overlength slot is topped off with Non-Overlength
  * weight up to the Overlength group's own cap — unless Overlength is RTA and Non-Overlength is
- * Assembled, in which case top-off is capped by the Non-Overlength group's own Assembled max
- * total weight instead (not the larger RTA cap): if the Overlength portion plus its own tare
- * already reaches that limit, no top-off happens at all.
+ * Assembled, in which case top-off is capped by the Overlength group's own Assembled max total
+ * weight instead (the mixed pallet is still an Overlength pallet, so its own Assembled tier
+ * governs, not the Non-Overlength group's): if the Overlength portion plus its own tare already
+ * reaches that limit, no top-off happens at all.
  */
 function buildOverlengthFirstPalletLines(overlengthWeight, nonOverlengthWeight, isOverlengthAssembled, isNonOverlengthAssembled, cfg) {
     const overlengthMax = isOverlengthAssembled ? cfg.ovAssembledMax : cfg.ovRtaMax;
@@ -98,7 +99,7 @@ function buildOverlengthFirstPalletLines(overlengthWeight, nonOverlengthWeight, 
             let topOff = 0;
             if (nonOverlengthRemaining > 0) {
                 if (isAssembledMixRestricted) {
-                    const room = nonOverlengthMax - (overlengthRemaining + overlengthTare);
+                    const room = cfg.ovAssembledMax - (overlengthRemaining + overlengthTare);
                     if (room > 0) topOff = Math.min(room, nonOverlengthRemaining);
                 } else if (overlengthRemaining < overlengthCargoCap) {
                     topOff = Math.min(overlengthCargoCap - overlengthRemaining, nonOverlengthRemaining);
