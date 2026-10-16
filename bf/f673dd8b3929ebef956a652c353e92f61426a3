@@ -1,0 +1,19 @@
+index.html
+  s_b7829641663d54::t_756984f6d3b6f6 67-70,102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bff673dd8b3929ebef956a652c353e92f61426a3",
+  "prompts": {},
+  "sessions": {
+    "s_b7829641663d54": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c7a264d-b403-4024-84e2-709f27ec025b",
+        "model": "unknown"
+      },
+      "human_author": "satish.gumudavelli <satish.gumudavelli@kitchen365.com>"
+    }
+  }
+}
